@@ -5,68 +5,149 @@
      subscribeKey: 'sub-c-0929d376-d178-11e7-aee1-6e8e9d2d00b1'
  });
 
- let userTemplate = Handlebars.compile($("#message-response-template").html());
+
+ // use a helper function to generate a new profile
+ let newPerson = generatePerson(true);
+
+ // create a bucket to store our ChatEngine Chat object
+ let myChat;
+
+ // create a bucket to store
+ let me;
+
+ // compile handlebars templates and store them for use later
  let peopleTemplate = Handlebars.compile($("#person-template").html());
  let meTemplate = Handlebars.compile($("#message-template").html());
+ let userTemplate = Handlebars.compile($("#message-response-template").html());
 
 
- let newPerson = generatePerson(true);
- ChatEngine.connect(newPerson.uuid, newPerson);
 
- ChatEngine.on('$.ready', function(data) {
-   // store my new user as `me`
-   me = data.me;
+ // this is our main function that starts our chat app
+ const init = () => {
 
-   // create a new ChatEngine Chat
-   myChat = new ChatEngine.Chat('chatengine-demo-chat');
+   // connect to ChatEngine with our generated user
+   ChatEngine.connect(newPerson.uuid, newPerson);
 
-   // when we recieve messages in this chat, render them
-   myChat.on('message', (message) => {
-       renderMessage(message);
+   // when ChatEngine is booted, it returns your new User as `data.me`
+   ChatEngine.on('$.ready', function(data) {
+
+       // store my new user as `me`
+       me = data.me;
+
+       // create a new ChatEngine Chat
+       myChat = new ChatEngine.Chat('chatengine-demo-chat');
+
+       // when we recieve messages in this chat, render them
+       myChat.on('message', (message) => {
+           renderMessage(message);
+       });
+
+       // when a user comes online, render them in the online list
+       myChat.on('$.online.*', (data) => {
+         $('#people-list ul').append(peopleTemplate(data.user));
+       });
+
+       // when a user goes offline, remove them from the online list
+       myChat.on('$.offline.*', (data) => {
+         $('#people-list ul').find('#' + data.user.uuid).remove();
+       });
+
+       // wait for our chat to be connected to the internet
+       myChat.on('$.connected', () => {
+
+           // search for 50 old `message` events
+           myChat.search({
+             event: 'message',
+             limit: 50
+           }).on('message', (data) => {
+
+             // when messages are returned, render them like normal messages
+             renderMessage(data, true);
+
+           });
+
+       });
+
+       // bind our "send" button and return key to send message
+       $('#sendMessage').on('submit', sendMessage)
+
+
    });
-   // emit the `message` event to everyone in the Chat
-   $('#sendMessage').on('submit', sendMessage)
- });
 
+ };
 
  // send a message to the Chat
-const sendMessage = () => {
+ const sendMessage = () => {
 
-    // emit the `message` event to everyone in the Chat
-    myChat.emit('message', {
-      text: $('#message-to-send').val().trim()
-      // text: "Prueba desde pagina"
-    });
+     // get the message text from the text input
+     let message = $('#message-to-send').val().trim();
 
-    // clear out the text input
-    $('#message-to-send').val('');
+     // if the message isn't empty
+     if (message.length) {
 
-    // stop form submit from bubbling
-    return false;
+         // emit the `message` event to everyone in the Chat
+         myChat.emit('message', {
+             text: message
+         });
 
-};
+         // clear out the text input
+         $('#message-to-send').val('');
+     }
 
+     // stop form submit from bubbling
+     return false;
 
+ };
 
+ // render messages in the list
+ const renderMessage = (message, isHistory = false) => {
 
- const renderMessage = (message) => {
+     // use the generic user template by default
+     let template = userTemplate;
 
-    //  render the message
-     $('.chat-history ul').append(userTemplate({
+     // if I happened to send the message, use the special template for myself
+     if (message.sender.uuid == me.uuid) {
+         template = meTemplate;
+     }
+
+     let el = template({
          messageOutput: message.data.text,
          time: getCurrentTime(),
          user: message.sender.state
-     }));
+     });
+
+     // render the message
+     if(isHistory) {
+       $('.chat-history ul').prepend(el);
+     } else {
+       $('.chat-history ul').append(el);
+     }
 
      // scroll to the bottom of the chat
      scrollToBottom();
 
  };
 
- const scrollToBottom = () => {
-    $('.chat-history').scrollTop($('.chat-history')[0].scrollHeight);
-};
+  const changeUserName = () => {
+    console.log("Entre en chance user name");
+    name = $('#user-name').val().trim();
+    last = $('#user-last').val().trim();
+    newPerson.first = name;
+    newPerson.last = last;
+    newPerson.full = name + " " + last;
+    // boot the app
+    init();
+  };
 
-const getCurrentTime = () => {
-    return new Date().toLocaleTimeString().replace(/([\d]+:[\d]{2})(:[\d]{2})(.*)/, "$1$3");
-};
+
+ // scroll to the bottom of the window
+ const scrollToBottom = () => {
+     $('.chat-history').scrollTop($('.chat-history')[0].scrollHeight);
+ };
+
+ // get the current time in a nice format
+ const getCurrentTime = () => {
+     return new Date().toLocaleTimeString().replace(/([\d]+:[\d]{2})(:[\d]{2})(.*)/, "$1$3");
+ };
+
+ $('#userNameButton').on('click', changeUserName)
